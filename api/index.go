@@ -1,4 +1,4 @@
-package main
+package handler
 
 import (
 	"context"
@@ -15,6 +15,10 @@ import (
 var dbName = "shorturls"
 var collectionName = "shorturls"
 var client *mongo.Client
+
+func init() {
+	initMongoClient()
+}
 
 func initMongoClient() {
 	godotenv.Load()
@@ -34,13 +38,17 @@ func initMongoClient() {
 	fmt.Println("successfully connected to MongoDB!")
 }
 
-func main() {
-	http.HandleFunc("/", HandleHome)
-	http.HandleFunc("/shorten", HandleShorten)
-	http.HandleFunc("/short/", HandleRedirect)
-
-	initMongoClient()
-
-	fmt.Println("URL Shortener is running on :8080")
-	http.ListenAndServe(":8080", nil)
+func Handler(w http.ResponseWriter, r *http.Request) {
+	switch r.URL.Path {
+	case "/":
+		HandleHome(w, r)
+	case "/shorten":
+		HandleShorten(w, r)
+	default:
+		if r.URL.Path[:7] == "/short/" {
+			HandleRedirect(w, r)
+		} else {
+			http.NotFound(w, r)
+		}
+	}
 }

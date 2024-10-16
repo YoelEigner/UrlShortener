@@ -5,50 +5,78 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"strings"
+	"sync"
+	"time"
 
-	"github.com/joho/godotenv"
-	"go.mongodb.org/mongo-driver/bson"
+	"github.com/aws/aws-lambda-go/events"
+	"github.com/aws/aws-lambda-go/lambda"
+	_ "go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
-var dbName = "shorturls"
-var collectionName = "shorturls"
-var client *mongo.Client
+var (
+	dbName         = "shorturls"
+	collectionName = "shorturls"
+	client         *mongo.Client
+	clientOnce     sync.Once
+	clientError    error
+)
 
-func init() {
-	initMongoClient()
-}
+func initMongoClient() (*mongo.Client, error) {
+	clientOnce.Do(func() {
+		serverAPI := options.ServerAPI(options.ServerAPIVersion1)
+		db_pass := os.Getenv("DB_PASS")
+		cluster_name := os.Getenv("CLUSTER_NAME")
+		opts := options.Client().ApplyURI("mongodb+srv://yoel:" + db_pass + "@" + cluster_name + "/?retryWrites=true&w=majority&appName=Cluster0").SetServerAPIOptions(serverAPI)
 
-func initMongoClient() {
-	godotenv.Load()
-	serverAPI := options.ServerAPI(options.ServerAPIVersion1)
-	db_pass := os.Getenv("DB_PASS")
-	cluster_name := os.Getenv("CLUSTER_NAME")
-	opts := options.Client().ApplyURI("mongodb+srv://yoel:" + db_pass + "@" + cluster_name + "/?retryWrites=true&w=majority&appName=Cluster0").SetServerAPIOptions(serverAPI)
-	var err error
-	client, err = mongo.Connect(context.TODO(), opts)
-	if err != nil {
-		panic(err)
-	}
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
 
-	if err := client.Database(dbName).RunCommand(context.TODO(), bson.D{{Key: "ping", Value: 1}}).Err(); err != nil {
-		panic(err)
-	}
-	fmt.Println("successfully connected to MongoDB!")
-}
-
-func Handler(w http.ResponseWriter, r *http.Request) {
-	switch r.URL.Path {
-	case "/":
-		HandleHome(w, r)
-	case "/shorten":
-		HandleShorten(w, r)
-	default:
-		if r.URL.Path[:7] == "/short/" {
-			HandleRedirect(w, r)
-		} else {
-			http.NotFound(w, r)
+		var err error
+		client, err = mongo.Connect(ctx, opts)
+		if err != nil {
+			clientError = fmt.Errorf("failed to connect to MongoDB: %v", err)
+			return
 		}
+
+		err = client.Ping(ctx, nil)
+		if err != nil {
+			clientError = fmt.Errorf("failed to ping MongoDB: %v", err)
+			return
+		}
+
+		fmt.Println("Successfully connected to MongoDB!")
+	})
+
+	return client, clientError
+}
+
+func Handler(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	_, err := initMongoClient()
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       "Internal Server Error",
+		}, nil
 	}
+
+	switch {
+	case request.Path == "/":
+		return HandleHome(request)
+	case request.Path == "/shorten":
+		return HandleShorten(request)
+	case strings.HasPrefix(request.Path, "/short/"):
+		return HandleRedirect(request)
+	default:
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusNotFound,
+			Body:       "404 Not Found",
+		}, nil
+	}
+}
+
+func main() {
+	lambda.Start(Handler)
 }

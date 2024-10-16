@@ -2,45 +2,65 @@ package handler
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
-	"html/template"
 	"math/rand"
 	"net/http"
+	"net/url"
+	"strings"
 
+	"github.com/aws/aws-lambda-go/events"
 	"go.mongodb.org/mongo-driver/bson"
 )
 
-func HandleShorten(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "Invalid request method", http.StatusMethodNotAllowed)
+func HandleShorten(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	if request.HTTPMethod != "POST" {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusMethodNotAllowed,
+			Body:       "Invalid request method",
+		}, nil
 	}
 
-	originalURL := r.FormValue("url")
+	var originalURL string
+	if request.Headers["Content-Type"] == "application/x-www-form-urlencoded" {
+		params, _ := url.ParseQuery(request.Body)
+		originalURL = params.Get("url")
+	} else if request.Headers["Content-Type"] == "application/json" {
+		var body map[string]string
+		json.Unmarshal([]byte(request.Body), &body)
+		originalURL = body["url"]
+	}
 
 	if originalURL == "" {
-		http.Error(w, "URL missing", http.StatusBadRequest)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Body:       "URL missing",
+		}, nil
 	}
 
 	shortKey := generateShortKey()
 
-	saveShortentedUrl(originalURL, shortKey)
-
-	scheme := "http"
-	if r.TLS != nil {
-		scheme = "https"
+	err := saveShortentedUrl(originalURL, shortKey)
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       "Error saving shortened URL",
+		}, nil
 	}
-	host := r.Host
-	shortURL := fmt.Sprintf("%s://%s/short/%s", scheme, host, shortKey)
 
-	data := struct {
-		OriginalURL string
-		ShortUrl    string
-	}{
-		OriginalURL: originalURL,
-		ShortUrl:    shortURL,
-	}
-	tmpl := template.Must(template.ParseFiles("./html/redirect.html"))
-	tmpl.Execute(w, data)
+	host := request.Headers["Host"]
+	shortURL := fmt.Sprintf("https://%s/short/%s", host, shortKey)
+
+	htmlContent := strings.Replace("./html/redirect.html", "{{.OriginalURL}}", originalURL, -1)
+	htmlContent = strings.Replace(htmlContent, "{{.ShortURL}}", shortURL, -1)
+
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+		Headers: map[string]string{
+			"Content-Type": "text/html",
+		},
+		Body: htmlContent,
+	}, nil
 }
 
 func generateShortKey() string {
@@ -50,12 +70,12 @@ func generateShortKey() string {
 	shortKey := make([]byte, shortKeyLength)
 
 	for i := range shortKey {
-		shortKey[i] = charset[rand.Intn((len((charset))))]
+		shortKey[i] = charset[rand.Intn(len(charset))]
 	}
 	return string(shortKey)
 }
 
-func saveShortentedUrl(originalUrl string, shortKey string) {
+func saveShortentedUrl(originalUrl string, shortKey string) error {
 	collection := client.Database(dbName).Collection(collectionName)
 
 	docs := bson.D{
@@ -63,7 +83,5 @@ func saveShortentedUrl(originalUrl string, shortKey string) {
 		{Key: "shortUrl", Value: shortKey},
 	}
 	_, err := collection.InsertOne(context.TODO(), docs)
-	if err != nil {
-		panic(err)
-	}
+	return err
 }

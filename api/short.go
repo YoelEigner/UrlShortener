@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/aws/aws-lambda-go/events"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"
 )
@@ -15,11 +16,14 @@ type Short struct {
 	ShortURL    string `bson:"shortUrl"`
 }
 
-func HandleRedirect(w http.ResponseWriter, r *http.Request) {
-	parts := strings.Split(r.URL.Path, "/short/")
+func HandleRedirect(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	parts := strings.Split(request.Path, "/short/")
 
 	if len(parts) < 2 || parts[1] == "" {
-		http.Error(w, "Short key missing", http.StatusBadRequest)
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusBadRequest,
+			Body:       "Short key missing",
+		}, nil
 	}
 
 	shortKey := parts[1]
@@ -31,12 +35,23 @@ func HandleRedirect(w http.ResponseWriter, r *http.Request) {
 
 	if err != nil {
 		if err == mongo.ErrNoDocuments {
-			http.Error(w, "Short URL not found", http.StatusNotFound)
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusNotFound,
+				Body:       "Short URL not found",
+			}, nil
 		} else {
-			http.Error(w, "Server error", http.StatusInternalServerError)
+			return events.APIGatewayProxyResponse{
+				StatusCode: http.StatusInternalServerError,
+				Body:       "Server error",
+			}, nil
 		}
-		return
 	}
 
-	http.Redirect(w, r, result.OriginalURL, http.StatusMovedPermanently)
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusFound,
+		Headers: map[string]string{
+			"Location": result.OriginalURL,
+		},
+		Body: "",
+	}, nil
 }

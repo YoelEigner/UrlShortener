@@ -1,16 +1,36 @@
 package handler
 
 import (
+	"bytes"
 	"html/template"
 	"net/http"
+
+	"github.com/aws/aws-lambda-go/events"
 )
 
-func HandleHome(w http.ResponseWriter, r *http.Request) {
-	tmpl := template.Must(template.ParseFiles("./html/index.html"))
-
-	if r.Method == http.MethodPost {
-		http.Redirect(w, r, "/shorten", http.StatusSeeOther)
-		return
+func HandleHome(request events.APIGatewayProxyRequest) (events.APIGatewayProxyResponse, error) {
+	tmpl, err := template.New("index").Parse("./html/index.html")
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       "Error parsing template",
+		}, nil
 	}
-	tmpl.Execute(w, nil)
+
+	var buf bytes.Buffer
+	err = tmpl.Execute(&buf, nil)
+	if err != nil {
+		return events.APIGatewayProxyResponse{
+			StatusCode: http.StatusInternalServerError,
+			Body:       "Error executing template",
+		}, nil
+	}
+
+	return events.APIGatewayProxyResponse{
+		StatusCode: http.StatusOK,
+		Headers: map[string]string{
+			"Content-Type": "text/html",
+		},
+		Body: buf.String(),
+	}, nil
 }

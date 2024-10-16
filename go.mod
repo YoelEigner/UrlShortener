@@ -1,6 +1,6 @@
 module short-url
 
-go 1.23.2
+go 1.20
 
 require (
 	github.com/golang/snappy v0.0.4 // indirect

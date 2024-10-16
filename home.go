@@ -1,4 +1,4 @@
-package handler
+package main
 
 import (
 	"html/template"
@@ -6,7 +6,7 @@ import (
 )
 
 func HandleHome(w http.ResponseWriter, r *http.Request) {
-	tmpl := template.Must(template.ParseFiles("../html/index.html"))
+	tmpl := template.Must(template.ParseFiles("./html/index.html"))
 
 	if r.Method == http.MethodPost {
 		http.Redirect(w, r, "/shorten", http.StatusSeeOther)

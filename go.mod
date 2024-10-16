@@ -3,7 +3,6 @@ module short-url
 go 1.23.2
 
 require (
-	github.com/aws/aws-lambda-go v1.47.0
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
 	github.com/klauspost/compress v1.13.6 // indirect

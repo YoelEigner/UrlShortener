@@ -1,4 +1,4 @@
-package handler
+package main
 
 import (
 	"context"
@@ -39,7 +39,7 @@ func HandleShorten(w http.ResponseWriter, r *http.Request) {
 		OriginalURL: originalURL,
 		ShortUrl:    shortURL,
 	}
-	tmpl := template.Must(template.ParseFiles("../html/redirect.html"))
+	tmpl := template.Must(template.ParseFiles("./html/redirect.html"))
 	tmpl.Execute(w, data)
 }
 

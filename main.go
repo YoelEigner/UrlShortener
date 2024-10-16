@@ -42,5 +42,5 @@ func main() {
 	initMongoClient()
 
 	fmt.Println("URL Shortener is running on :8080")
-	http.ListenAndServe(":8080", nil)
+	http.ListenAndServe("0.0.0.0:8080", nil)
 }
